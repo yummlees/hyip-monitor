@@ -76,6 +76,8 @@ tbody td{padding:14px 16px;vertical-align:middle}
 .delete-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:6px;transition:all .15s}
 .delete-btn:hover{color:var(--red);background:rgba(239,68,68,.1)}
 .loading{text-align:center;padding:48px;color:var(--cyan);font-size:14px}
+.program-link{color:var(--cyan);text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:opacity .2s}
+.program-link:hover{opacity:0.8;text-decoration:underline}
 @media(max-width:768px){
 .filters{flex-direction:column;align-items:stretch}
 .search-input{margin-left:0;min-width:unset}
@@ -153,6 +155,10 @@ thead th,tbody td{padding:10px 8px}
 <div class="form-group">
 <label>Program Name</label>
 <input type="text" id="f_name" placeholder="e.g., Alpha Yield Pro">
+</div>
+<div class="form-group">
+<label>Program Website URL</label>
+<input type="url" id="f_url" placeholder="https://...">
 </div>
 <div class="form-row">
 <div class="form-group">
@@ -300,8 +306,14 @@ const tb=document.getElementById("tableBody");
 const empty=document.getElementById("emptyState");
 if(!list.length){tb.innerHTML="";empty.style.display="block";return}
 empty.style.display="none";
-tb.innerHTML=list.map(p=>`<tr>
-<td style="font-weight:600">${p.name}</td>
+
+tb.innerHTML=list.map(p=>{
+  const programNameDisplay = p.website_url 
+    ? `<a href="${p.website_url}" target="_blank" rel="noopener noreferrer" class="program-link">${p.name} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>`
+    : p.name;
+
+  return `<tr>
+<td style="font-weight:600">${programNameDisplay}</td>
 <td class="mono" style="font-size:12px;color:var(--muted)">${p.source_monitor}</td>
 <td class="roi-val">${p.daily_roi}%</td>
 <td>$${p.min_deposit}</td>
@@ -310,7 +322,8 @@ tb.innerHTML=list.map(p=>`<tr>
 <td><span class="${badgeClass(p.status)}">${p.status}</span></td>
 <td><span class="badge ${riskClass(p.risk_score)}">${p.risk_score}/10 ${riskLabel(p.risk_score)}</span></td>
 <td><button class="delete-btn" onclick="del('${p.id}')" title="Delete">✕</button></td>
-</tr>`).join("");
+</tr>`;
+}).join("");
 renderStats();
 }
 
@@ -339,6 +352,7 @@ const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, 
 const { error } = await supabaseClient.from('hyip_programs').insert([{
   name,
   slug,
+  website_url: document.getElementById("f_url").value.trim(),
   source_monitor: document.getElementById("f_source").value,
   daily_roi: parseFloat(document.getElementById("f_roi").value) || 0,
   min_deposit: parseFloat(document.getElementById("f_min").value) || 0,
@@ -354,8 +368,8 @@ if (error) {
   alert("Error saving: " + error.message);
 } else {
   closeModal();
-  ["f_name","f_roi","f_min","f_lock","f_days","f_risk"].forEach(id=>document.getElementById(id).value="");
-  await fetchData(); // Reload data from database
+  ["f_name","f_url","f_roi","f_min","f_lock","f_days","f_risk"].forEach(id=>document.getElementById(id).value="");
+  await fetchData(); 
 }
 
 saveBtn.disabled = false;
@@ -368,11 +382,10 @@ const { error } = await supabaseClient.from('hyip_programs').delete().eq('id', i
 if (error) {
   alert("Error deleting: " + error.message);
 } else {
-  await fetchData(); // Reload data from database
+  await fetchData(); 
 }
 }
 
-// Initialize
 fetchData();
 </script>
 </body>
