@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HYIP Monitor — GameDesk</title>
 <link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -53,6 +54,7 @@ tbody td{padding:14px 16px;vertical-align:middle}
 .source-chip:hover{border-color:var(--cyan);color:var(--cyan)}
 .btn-add{background:var(--cyan);color:var(--cta-label);border:none;padding:10px 20px;border-radius:16px;font-size:14px;font-weight:600;font-family:'Bai Jamjuree',sans-serif;cursor:pointer;letter-spacing:.35px;transition:all .2s}
 .btn-add:hover{box-shadow:0 0 18px rgba(34,240,255,.18)}
+.btn-add:disabled{opacity:0.5;cursor:not-allowed}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(7,7,13,.85);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:32px;width:90%;max-width:520px;max-height:90vh;overflow-y:auto}
@@ -73,6 +75,7 @@ tbody td{padding:14px 16px;vertical-align:middle}
 .tagline span:nth-child(1){color:var(--cyan)}.tagline span:nth-child(2){color:var(--magenta)}.tagline span:nth-child(3){color:var(--cyan)}
 .delete-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:6px;transition:all .15s}
 .delete-btn:hover{color:var(--red);background:rgba(239,68,68,.1)}
+.loading{text-align:center;padding:48px;color:var(--cyan);font-size:14px}
 @media(max-width:768px){
 .filters{flex-direction:column;align-items:stretch}
 .search-input{margin-left:0;min-width:unset}
@@ -99,7 +102,7 @@ thead th,tbody td{padding:10px 8px}
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
 <h2 style="margin:0">Program Listings</h2>
-<button class="btn-add" onclick="openModal()">+ Add Program</button>
+<button class="btn-add" id="addBtn" onclick="openModal()">+ Add Program</button>
 </div>
 <div class="filters">
 <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
@@ -127,7 +130,9 @@ thead th,tbody td{padding:10px 8px}
 <th></th>
 </tr>
 </thead>
-<tbody id="tableBody"></tbody>
+<tbody id="tableBody">
+<tr><td colspan="9" class="loading">Connecting to database...</td></tr>
+</tbody>
 </table>
 </div>
 <div id="emptyState" class="empty" style="display:none">No programs match your current filters.</div>
@@ -136,7 +141,7 @@ thead th,tbody td{padding:10px 8px}
 <div class="card">
 <h2>Monitored Sources (Top 10)</h2>
 <div class="sources-grid" id="sourcesGrid"></div>
-<p class="note">These are the top 10 HYIP monitor sites tracked. To automate data ingestion, configure an external cron job (e.g., GitHub Actions or Pipedream) to scrape these sources and POST data to your API endpoint.</p>
+<p class="note">These are the top 10 HYIP monitor sites tracked. Automated scraping will populate this database daily.</p>
 </div>
 
 <p class="note" style="margin-top:24px;text-align:center">GameDesk uses multi-tier referrals on verified spend/play, not recruiting.</p>
@@ -219,44 +224,53 @@ thead th,tbody td{padding:10px 8px}
 </div>
 <div class="btn-row">
 <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-<button class="btn-add" onclick="saveProgram()">Save Program</button>
+<button class="btn-add" id="saveBtn" onclick="saveProgram()">Save Program</button>
 </div>
 </div>
 </div>
 
 <script>
+// ⚠️ REPLACE THESE WITH YOUR ACTUAL SUPABASE KEYS ⚠️
+const SUPABASE_URL = 'https://rtjkdtjdhotkbtmiflry.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0amtkdGpkaG90a2J0bWlmbHJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMjY5NTUsImV4cCI6MjEwNTgwMjk1NX0.U5ru3cyimAFf1nQlTsBlwjGolHyA7TA91biJBVMaUrA';
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const SOURCES=[
 "hyipexplorer.com","allhyipmonitors.com","hyip.biz","hyipnews.info",
 "hyiprating.com","goldenhyip.com","hyipmanager.com","hyipjudge.com",
 "hyipinvest.com","monitorhyip.com"
 ];
 
-const SEED=[
-{id:"1",name:"Crypto Yield Hub",source:"hyipexplorer.com",roi:3.5,min:10,lock:0,status:"paying",days:12,crypto:true,recruit:false,risk:4},
-{id:"2",name:"BNB Auto Farm",source:"allhyipmonitors.com",roi:5.0,min:25,lock:0,status:"paying",days:8,crypto:true,recruit:false,risk:5},
-{id:"3",name:"Stable Gain Pro",source:"hyip.biz",roi:1.8,min:50,lock:7,status:"paying",days:45,crypto:true,recruit:false,risk:3},
-{id:"4",name:"Neon Trade AI",source:"hyipnews.info",roi:8.0,min:100,lock:0,status:"new",days:3,crypto:true,recruit:false,risk:7},
-{id:"5",name:"Quantum Profit X",source:"hyiprating.com",roi:12.0,min:200,lock:14,status:"problem",days:22,crypto:true,recruit:true,risk:9},
-{id:"6",name:"Daily Coin Rush",source:"goldenhyip.com",roi:6.5,min:5,lock:0,status:"paying",days:18,crypto:true,recruit:false,risk:6},
-{id:"7",name:"Infinity Pool DAO",source:"hyipmanager.com",roi:2.2,min:500,lock:30,status:"waiting",days:0,crypto:true,recruit:false,risk:5},
-{id:"8",name:"Turbo Hash Ltd",source:"hyipjudge.com",roi:15.0,min:50,lock:0,status:"scam",days:5,crypto:true,recruit:true,risk:10},
-{id:"9",name:"Pegged Yield Co",source:"hyipinvest.com",roi:1.5,min:100,lock:0,status:"paying",days:90,crypto:true,recruit:false,risk:2},
-{id:"10",name:"Flash ROI Club",source:"monitorhyip.com",roi:10.0,min:20,lock:3,status:"new",days:1,crypto:true,recruit:false,risk:8}
-];
-
-let programs=JSON.parse(localStorage.getItem("hyip_programs"))||SEED;
+let programs = [];
 let currentFilter="all";
 let cryptoOnly=false;
 let noRecruit=false;
 let searchTerm="";
 
-function save(){localStorage.setItem("hyip_programs",JSON.stringify(programs))}
+async function fetchData() {
+  document.getElementById("tableBody").innerHTML = '<tr><td colspan="9" class="loading">Loading data from Supabase...</td></tr>';
+  const { data, error } = await supabaseClient
+    .from('hyip_programs')
+    .select('*')
+    .order('added_date', { ascending: false });
+
+  if (error) {
+    console.error("Supabase error:", error);
+    document.getElementById("tableBody").innerHTML = '<tr><td colspan="9" class="loading" style="color:var(--red)">Error loading data. Check console.</td></tr>';
+    return;
+  }
+  
+  programs = data || [];
+  renderSources();
+  render();
+}
 
 function renderStats(){
 const paying=programs.filter(p=>p.status==="paying").length;
 const newP=programs.filter(p=>p.status==="new").length;
 const scam=programs.filter(p=>p.status==="scam").length;
-const avgRisk=programs.length?(programs.reduce((a,p)=>a+p.risk,0)/programs.length).toFixed(1):0;
+const avgRisk=programs.length?(programs.reduce((a,p)=>a+p.risk_score,0)/programs.length).toFixed(1):0;
 document.getElementById("statsGrid").innerHTML=`
 <div class="stat-card"><div class="stat-value cyan">${programs.length}</div><div class="stat-label">Total Tracked</div></div>
 <div class="stat-card"><div class="stat-value green">${paying}</div><div class="stat-label">Paying</div></div>
@@ -277,8 +291,8 @@ function riskLabel(r){return r<=3?"Low":r<=7?"Med":"High"}
 function render(){
 let list=programs.filter(p=>{
 if(currentFilter!=="all"&&p.status!==currentFilter)return false;
-if(cryptoOnly&&!p.crypto)return false;
-if(noRecruit&&p.recruit)return false;
+if(cryptoOnly&&!p.accepts_crypto)return false;
+if(noRecruit&&p.requires_recruiting)return false;
 if(searchTerm&&!p.name.toLowerCase().includes(searchTerm.toLowerCase()))return false;
 return true;
 });
@@ -288,13 +302,13 @@ if(!list.length){tb.innerHTML="";empty.style.display="block";return}
 empty.style.display="none";
 tb.innerHTML=list.map(p=>`<tr>
 <td style="font-weight:600">${p.name}</td>
-<td class="mono" style="font-size:12px;color:var(--muted)">${p.source}</td>
-<td class="roi-val">${p.roi}%</td>
-<td>$${p.min}</td>
-<td>${p.lock?p.lock+"d":"None"}</td>
-<td>${p.days}</td>
+<td class="mono" style="font-size:12px;color:var(--muted)">${p.source_monitor}</td>
+<td class="roi-val">${p.daily_roi}%</td>
+<td>$${p.min_deposit}</td>
+<td>${p.lock_period_days?p.lock_period_days+"d":"None"}</td>
+<td>${p.days_active}</td>
 <td><span class="${badgeClass(p.status)}">${p.status}</span></td>
-<td><span class="badge ${riskClass(p.risk)}">${p.risk}/10 ${riskLabel(p.risk)}</span></td>
+<td><span class="badge ${riskClass(p.risk_score)}">${p.risk_score}/10 ${riskLabel(p.risk_score)}</span></td>
 <td><button class="delete-btn" onclick="del('${p.id}')" title="Delete">✕</button></td>
 </tr>`).join("");
 renderStats();
@@ -312,34 +326,54 @@ function toggleRecruit(el){noRecruit=!noRecruit;el.classList.toggle("active");re
 function openModal(){document.getElementById("modal").classList.add("open")}
 function closeModal(){document.getElementById("modal").classList.remove("open")}
 
-function saveProgram(){
+async function saveProgram(){
 const name=document.getElementById("f_name").value.trim();
 if(!name){alert("Please enter a program name.");return}
-const p={
-id:Date.now().toString(),
-name,
-source:document.getElementById("f_source").value,
-roi:parseFloat(document.getElementById("f_roi").value)||0,
-min:parseFloat(document.getElementById("f_min").value)||0,
-lock:parseInt(document.getElementById("f_lock").value)||0,
-status:document.getElementById("f_status").value,
-days:parseInt(document.getElementById("f_days").value)||0,
-crypto:document.getElementById("f_crypto").value==="true",
-recruit:document.getElementById("f_recruit").value==="true",
-risk:parseInt(document.getElementById("f_risk").value)||5
-};
-programs.unshift(p);
-save();render();closeModal();
-["f_name","f_roi","f_min","f_lock","f_days","f_risk"].forEach(id=>document.getElementById(id).value="");
+
+const saveBtn = document.getElementById("saveBtn");
+saveBtn.disabled = true;
+saveBtn.innerText = "Saving...";
+
+const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+const { error } = await supabaseClient.from('hyip_programs').insert([{
+  name,
+  slug,
+  source_monitor: document.getElementById("f_source").value,
+  daily_roi: parseFloat(document.getElementById("f_roi").value) || 0,
+  min_deposit: parseFloat(document.getElementById("f_min").value) || 0,
+  lock_period_days: parseInt(document.getElementById("f_lock").value) || 0,
+  status: document.getElementById("f_status").value,
+  days_active: parseInt(document.getElementById("f_days").value) || 0,
+  accepts_crypto: document.getElementById("f_crypto").value === "true",
+  requires_recruiting: document.getElementById("f_recruit").value === "true",
+  risk_score: parseInt(document.getElementById("f_risk").value) || 5
+}]);
+
+if (error) {
+  alert("Error saving: " + error.message);
+} else {
+  closeModal();
+  ["f_name","f_roi","f_min","f_lock","f_days","f_risk"].forEach(id=>document.getElementById(id).value="");
+  await fetchData(); // Reload data from database
 }
 
-function del(id){
-if(!confirm("Delete this program?"))return;
-programs=programs.filter(p=>p.id!==id);
-save();render();
+saveBtn.disabled = false;
+saveBtn.innerText = "Save Program";
 }
 
-renderSources();render();
+async function del(id){
+if(!confirm("Delete this program from the database?"))return;
+const { error } = await supabaseClient.from('hyip_programs').delete().eq('id', id);
+if (error) {
+  alert("Error deleting: " + error.message);
+} else {
+  await fetchData(); // Reload data from database
+}
+}
+
+// Initialize
+fetchData();
 </script>
 </body>
 </html>
